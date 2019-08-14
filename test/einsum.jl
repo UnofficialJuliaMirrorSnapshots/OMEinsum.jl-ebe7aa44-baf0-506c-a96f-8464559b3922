@@ -52,6 +52,16 @@ end
     @test einsum(EinCode(((1,2),(2,3),(3,4)),(4,1)), (a,b,c)) ≈ permutedims(a*b*c, (2,1))
     @test einsum(EinCode(((1,2),(2,)), (1,)), (a,v)) ≈ a * v
 
+    # more matmul
+    @test ein"ij,jk -> ik"(a,a) ≈ a * a
+    @test ein"ij,jk -> ki"(a,a) ≈ transpose(a * a)
+    @test ein"ij,kj -> ik"(a,a) ≈ a * transpose(a)
+    @test ein"ij,kj -> ki"(a,a) ≈ transpose(a * transpose(a))
+    @test ein"ji,jk -> ik"(a,a) ≈ transpose(a) * a
+    @test ein"ji,jk -> ki"(a,a) ≈ transpose(transpose(a) * a)
+    @test ein"ji,kj -> ik"(a,a) ≈ transpose(a) * transpose(a)
+    @test ein"ji,kj -> ki"(a,a) ≈ transpose(transpose(a) * transpose(a))
+
     # contract to 0-dim array
     @test einsum(EinCode(((1,2),(1,2)), ()), (a,a))[] ≈ sum(a .* a)
 
@@ -62,6 +72,8 @@ end
 
     # partial trace
     @test einsum(EinCode(((1,2,2,3),), (1,3)), (aa,)) ≈ sum(aa[:,i,i,:] for i in 1:4)
+    # with permutation
+    @test einsum(EinCode(((1,2,2,3),), (3,1)), (aa,)) ≈ transpose(sum(aa[:,i,i,:] for i in 1:4))
 
     # diag
     @test einsum(EinCode(((1,2,2,3),), (1,2,3)), (aa,)) ≈ aa[:,[CartesianIndex(i,i) for i in 1:4],:]
@@ -100,6 +112,8 @@ end
     # index-sum
     a = rand(2,2,5)
     @test einsum(EinCode(((1,2,3),),(1,2)),(a,)) ≈ sum(a, dims=3)
+    # with permutation
+    ein"ijk -> ki"(a) ≈ transpose(dropdims(sum(a,dims=2),dims=2))
 
     # Hadamard product
     a = rand(2,3)

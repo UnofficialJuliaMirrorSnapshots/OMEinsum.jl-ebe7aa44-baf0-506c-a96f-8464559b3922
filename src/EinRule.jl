@@ -35,7 +35,7 @@ a einsum code is sum.
 function match_rule(::Type{Sum}, ixs, iy)
     length(ixs) != 1 && return false
     (ix,) = ixs
-    allunique(ix) && allunique(iy) && nopermute(ix, iy)
+    allunique(ix) && allunique(iy) && all(i -> i in ix, iy)
 end
 
 """
@@ -52,7 +52,7 @@ end
 Hadamard
 """
 function match_rule(::Type{Hadamard}, ixs, iy)
-    allunique(iy) && all(ix -> ix === iy, ixs)
+    allunique(iy) && all(allunique, ixs) &&  all(==(iy), ixs)
 end
 
 """
@@ -71,13 +71,12 @@ function match_rule(::Type{PTrace}, ixs, iy)
         (ciy == 1 && cix == 1) ||
         (ciy > 1)
     end || return false
-    nopermute(ix, iy)
 end
 
 function match_rule(::Type{MatMul}, ixs, iy)
-    length.(ixs) == (2,2) && length(iy) == 2 &&
-    iy[1] == ixs[1][1] && iy[2] == ixs[2][2] &&
-    ixs[1][2] == ixs[2][1]
+    length.(ixs) == (2,2) && length(iy) == 2 || return false
+    ix1, ix2 = ixs
+    length(intersect(ix1,ix2)) == 1 && Set(symdiff(ix1,ix2)) == Set(iy)
 end
 
 function match_rule(::Type{Identity}, ixs, iy)

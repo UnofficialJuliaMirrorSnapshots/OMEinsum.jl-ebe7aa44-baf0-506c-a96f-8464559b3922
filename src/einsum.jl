@@ -1,27 +1,25 @@
 include("EinRule.jl")
 
-# TODO: fix the docstring
 @doc raw"
-    einsum(::EinCode{ixs, iy}, out, size_dict) where {ixs, iy}
+    einsum(::EinCode{ixs, iy}, xs, size_dict) where {ixs, iy}
 
 return the tensor that results from contracting the tensors `xs` according
-to their indices `ixs`, where all indices that do not appear in the output are
+to their indices `ixs`, where all indices that do not appear in the output `iy` are
 summed over.
 The result is permuted according to `out`.
 
-- `ixs` - tuple of tuple of integers that label all indices of a tensor.
-       Indices that appear twice (in different tensors) are summed over
+- `ixs` - tuple of tuples of index-labels of the input-tensors `xs`
+
+- `iy` - tuple of index-labels of the output-tensor
 
 - `xs` - tuple of tensors
 
-- `out` - tuple of integers that should correspond to remaining indices in `ixs` after contractions.
-
+- `size_dict` - `IndexSize`-object that maps index-labels to their sizes
 
 # example
-```jldoctest; setup = :(using OMEinsum)
-julia> a = rand(2,2);
 
-julia> b = rand(2,2);
+```jldoctest; setup = :(using OMEinsum)
+julia> a, b = rand(2,2), rand(2,2);
 
 julia> einsum(EinCode((('i','j'),('j','k')),('i','k')), (a, b)) ≈ a * b
 true
@@ -36,17 +34,19 @@ true
 end
 
 function einsum(::Tr, ::EinCode, xs, size_dict)
-    asarray(tr(xs[1]), xs[1])  # should be dispatched to tensortrace too.
+    asarray(tr(xs[1]), xs[1])
 end
 
 using TensorOperations
 
-function einsum(::PTrace, ::EinCode{ixs,iy}, xs, size_dict) where {ixs, iy}
-    tensortrace(xs[1], ixs[1], iy)
+function einsum(::PTrace, ::EinCode{ixs,iy}, xs::NTuple{<:Any, AbstractArray{<:Union{Complex,Real}}}, size_dict) where {ixs, iy}
+    asarray(tensortrace(xs[1], ixs[1], iy), xs[1])
 end
 
+# note that dispatching to Hadamard if some `ixs` are permuted has inferior
+# performance compared to the fallback
 function einsum(::Hadamard, ::EinCode{ixs, iy}, xs, size_dict) where {ixs, iy}
-    broadcast(*, xs...)
+    asarray(broadcast(*, xs...), xs[1])
 end
 
 @generated function einsum(::PairWise, ::EinCode{ixs, iy}, xs::NTuple{NT,AbstractArray{T} where T<:Union{Complex, Real}}, size_dict) where {ixs, iy, NT}
@@ -63,7 +63,8 @@ function einsum(sm::Sum, code::EinCode{ixs, iy}, xs, size_dict) where {ixs, iy}
     (ix1,) = ixs
     ix1f = filter!(i -> i in iy, collect(ix1))
     perm = map(i -> findfirst(==(i), ix1f), iy)
-    permutedims(dropdims(sum(xs[1], dims=dims), dims=dims), perm)
+    res = dropdims(sum(xs[1], dims=dims), dims=dims)
+    perm == iy ? res : permutedims(res, perm)
 end
 
 @generated function einsum(sm::MatMul, code::EinCode{ixs, iy}, xs, size_dict) where {ixs, iy}

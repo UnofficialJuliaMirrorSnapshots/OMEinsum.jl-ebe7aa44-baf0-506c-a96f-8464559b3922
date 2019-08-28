@@ -11,72 +11,110 @@ alt="OMEinsum logo" width="510"></img>
 [![pipeline status](https://gitlab.com/JuliaGPU/OMEinsum-jl/badges/master/pipeline.svg)](https://gitlab.com/user/JuliaGPU/OMEinsum-jl/master)
 [![Codecov](https://codecov.io/gh/under-Peter/OMEinsum.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/under-Peter/OMEinsum.jl)
 
-This is a repository for the _Google Summer of Code_ project on Differentiable Tensor Networks.
-It is a work in progress and will **change substantially this summer (2019)** - no guarantees can be made.
+This is a repository for the _Google Summer of Code_ project on *Differentiable Tensor Networks*.
+It implements one function that both computer scientists and physicists love, the *Einstein summation*
 
-This package exports one function, `einsum`, with three interfaces.
-`einsum` implements functionality similar to the `einsum` function in `numpy`,
-although some details are different.
+<img alt="einsum definition" src="https://github.com/under-Peter/OMEinsum.jl/blob/master/docs/einsum_define.png?raw=true" width=300/>
 
-`einsum` operations are specified by a tuple of tensors `xs = (x1, x2, x3...)`
-, a tuple of index-labels for the tensors in `xs`, `ixs = (ix1, ix2, ix3...)`,
-and output index-labels `iy` specified as `einsum(EinCode(ixs,iy), xs)`.
-Alternatively, operations can be specified using the `@ein`-macro or
-the `@ein_str`- string literal (see examples or help).
+To find out the details about einsum, please check out my [nextjournal-article](https://nextjournal.com/under-Peter/julia-summer-of-einsum) or the [numpy-manual](https://docs.scipy.org/doc/numpy/reference/generated/numpy.einsum.html).
 
-Let `l` be the set of all unique labels in the `ixs` without the ones in `iy`.
-`einsum` then calculates an output tensor `y` with indices labelled `iy` according
-to the following specification:
+Einstein summation can be implemented in no more than 20 lines of Julia code, the automatic differentiation is also [straightforward](https://giggleliu.github.io/2019/04/02/einsumbp.html). The main effort of this package is improving the [performance](https://github.com/under-Peter/OMEinsum-Benchmarks) utilizing Julia [multiple dispatch on traits](https://white.ucc.asn.au/2018/10/03/Dispatch,-Traits-and-Metaprogramming-Over-Reflection.html). So that people can enjoy the speed of faster specific implementations like BLAS functions, `sum` and `permutedims` on both CPU and GPU without suffering from runtime overhead.
+
+*Note: why the test coverage is not 100%* - GPU-code coverage is not evaluated although we test the GPU code properly on gitlab. Ignoring the GPU-code, the actual coverage is at about _97%_.
+
+## Install
+
+To install, type `]` in a julia REPL and then input
+```julia pkg
+pkg> add OMEinsum
 ```
-∀ iy : y[iy] = ∑ₗ x1[ix1] * x2[ix2] * x3[ix3] ...
-```
-where the sum over `l` implies the sum over all possible values of the labels in `l`.
 
-To find out the details about einsum, check out my [nextjournal-article](https://nextjournal.com/under-Peter/julia-summer-of-einsum) or the [numpy-manual](https://docs.scipy.org/doc/numpy/reference/generated/numpy.einsum.html).
-
-
-[Benchmarks are available here](https://github.com/under-Peter/OMEinsum-Benchmarks)
-
-## Examples
-Consider multiplying two matrices `a` and `b` which we specify with
+## Learn by Examples
+To avoid runtime overhead, we recommend users to use [non-standard string literal](https://docs.julialang.org/en/v1/manual/metaprogramming/#Non-Standard-String-Literals-1) `@ein_str`.
+For example
 ```julia
 julia> a, b = rand(2,2), rand(2,2);
 
+julia> ein"ik,kj -> ij"(a,b) # multiply two matrices `a` and `b`
+
+julia> ein"ij -> "(a)[] # sum a matrix, `[]` is used to index the output 0-dimensional array
+
+julia> ein"->ii"(asarray(1), size_info=IndexSize('i'=>5)) # get 5 x 5 identity matrix
+```
+
+Alternatively, people can specify the contraction with a construction approach
+```julia
 julia> einsum(EinCode((('i','k'),('k','j')),('i','j')),(a,b))
 ```
-
-This way of specifying an operation is prone to errors,
-which is why additional interfaces are exported.
-
-The [string literal](https://docs.julialang.org/en/latest/manual/metaprogramming/#Non-Standard-String-Literals-1) does not introduce any runtime overhead thanks to Julia's powerful meta programming and simplifies the above operation to
-```julia
-julia> ein"ik,kj -> ij"(a,b)
-```
-
-Instead of the string-literal, we can also use the `@ein` macro,
+or a macro based interface, `@ein` macro,
 which is closer to the standard way of writing einsum-operations in physics
-as
 ```julia
 julia> @ein c[i,j] := a[i,k] * b[k,j];
 ```
-which will calculate the matrix product between `a` and `b` _and_ assign
-it to a new variable `c`.
-So this is equivalent to writing
+
+#### A table for reference
+| code             | meaning         |
+| ---------------- | --------------- |
+| `ein"ij,jk->ik"`   | matrix matrix multiplication |
+| `ein"ijl,jkl->ikl"`   | batched - matrix matrix multiplication |
+| `ein"ij,j->i"`   | matrix vector multiplication |
+| `ein"ij,ik,il->jkl"`   | star contraction |
+| `ein"ii->"`   | trace |
+| `ein"ij->i"` | sum |
+| `ein"ii->i"` | take the diagonal part of a matrix |
+| `ein"ijkl->ilkj"` | permute the dimensions of a tensor |
+| `ein"i->ii"` | construct a diagonal matrix |
+| `ein"->ii"`  | broadcast a scalar to the diagonal part of a matrix |
+| `ein"ij,ij->ij"`  | element wise product |
+| `ein"ij,kl->ijkl"`  | outer product |
+
+
+To see more examples using the GPU and autodiff, check out our asciinema-demo here:
+[![asciicast](https://asciinema.org/a/wE4CtIzWUC3R0GkVV28rVBRFb.svg)](https://asciinema.org/a/wE4CtIzWUC3R0GkVV28rVBRFb)
+
+## Application
+
+For an application in tensor network algorithms, check out the [TensorNetworkAD](https://github.com/under-Peter/TensorNetworkAD.jl)
+package, where `OMEinsum` is used to evaluate tensor-contractions, permutations and summations.
+
+#### Toy Application: solving a 3-coloring problem on the Petersen graph
+Let us focus on graphs
+with vertices with three edges each. A question one might ask is:
+How many different ways are there to colour the edges of the graph with
+three different colours such that no vertex has a duplicate colour on its edges?
+
+The counting problem can be transformed into a contraction of rank-3 tensors
+representing the edges. Consider the tensor `s` defined as
 ```julia
-julia> c = ein"ik,kj -> ij"(a,b);
+julia> s = map(x->Int(length(unique(x.I)) == 3), CartesianIndices((3,3,3)))
 ```
 
-
-If we're interested in the sum of all elements of a matrix product `a*b`
-we can reduce over all indices with the specification `ij,jk -> `
+Then we can simply contract `s` tensors to get the number of 3 colourings satisfying the above condition!
+E.g. for two vertices, we get 6 distinct colourings:
 ```julia
-julia> ein"ij,jk->"(a,b)[] ≈ sum(a * b)
-true
+julia> ein"ijk,ijk->"(s,s)[]
+6
 ```
 
-Note the use of `[]` to extract the element of a 0-dimensional array.
-`einsum` always returns arrays so scalars are wrapped in 0-dimensional arrays.
+Using that method, it's easy to find that e.g. the peterson graph allows no 3 colouring, since
+```julia
+julia> ein"afl,bhn,cjf,dlh,enj,ago,big,cki,dmk,eom->"(fill(s, 10)...)[]
+0
+```
 
+The peterson graph consists of 10 vertices and 15 edges and looks like a pentagram
+embedded in a pentagon as depicted here:
+
+![](https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Petersen_graph.svg/252px-Petersen_graph.svg.png)
+
+Confronted with the above result, we can ask whether the peterson graph allows a relaxed variation of 3 colouring, having one vertex that might accept duplicate colours. The answer to that can be found using the gradient w.r.t a vertex:
+```julia
+julia> using Zygote: gradient
+
+julia> gradient(x->ein"afl,bhn,cjf,dlh,enj,ago,big,cki,dmk,eom->"(x,s,s,s,s,s,s,s,s,s)[], s)[1] |> sum
+0
+```
+This tells us that even if we allow duplicates on one vertex, there are no 3-colourings for the peterson graph.
 
 ## Contribute
 

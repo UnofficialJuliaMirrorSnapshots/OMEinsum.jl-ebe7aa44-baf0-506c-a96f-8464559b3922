@@ -94,7 +94,13 @@ const einsum_rules = [
     PairWise,
     ]
 
-"""Find the matched rule."""
+@doc raw"
+    match_rule(ixs, iy)
+    match_rule(code::EinCode{ixs, iy})
+
+go through all operations specified in the `einsum_rules`-vector and return
+the first `T` for which `match_rule(T, ixs, iy)` returns true.
+"
 function match_rule(ixs, iy)
     # the first rule with the higher the priority
     for T in einsum_rules
@@ -102,3 +108,5 @@ function match_rule(ixs, iy)
     end
     return DefaultRule()
 end
+
+match_rule(code::EinCode{ixs, iy}) where {ixs, iy} = match_rule(ixs, iy)
